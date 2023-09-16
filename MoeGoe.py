@@ -8,9 +8,14 @@ import sys
 import re
 from torch import no_grad, LongTensor
 import logging
+import io
+from flask import Flask, request, Response, send_file
+import argparse
+import json
+import traceback
+import os
 
 logging.getLogger('numba').setLevel(logging.WARNING)
-
 
 def ex_print(text, escape=False):
     if escape:
@@ -24,8 +29,10 @@ def get_text(text, hps, cleaned=False):
         text_norm = text_to_sequence(text, hps.symbols, [])
     else:
         text_norm = text_to_sequence(text, hps.symbols, hps.data.text_cleaners)
+    # print(text_norm)
     if hps.data.add_blank:
         text_norm = commons.intersperse(text_norm, 0)
+    # print(text_norm)
     text_norm = LongTensor(text_norm)
     return text_norm
 
@@ -65,7 +72,20 @@ def get_label_value(text, label, default, warning_name='value'):
             value = float(value.group(1))
         except:
             print(f'Invalid {warning_name}!')
-            sys.exit(1)
+            # sys.exit(1)
+    else:
+        value = default
+    return value, text
+
+def get_label_text(text, label, default):
+    value = re.search(rf'\[{label}=(.+?)\]', text)
+    if value:
+        try:
+            text = re.sub(rf'\[{label}=(.+?)\]', '', text, 1)
+            value = value.group(1)
+        except:
+            print('Invalid ', label, value)
+            # sys.exit(1)
     else:
         value = default
     return value, text
@@ -77,9 +97,165 @@ def get_label(text, label):
     else:
         return False, text
 
+webApp = Flask(__name__)
+appArgs = None
+appConfig = None
+appSpeakers = {}
 
-if __name__ == '__main__':
-    if '--escape' in sys.argv:
+@webApp.route('/speakers', methods = ['GET'])
+def ListSpeakers():
+    return json.dumps(list(appSpeakers.keys())), 200, [("Content-Type", "application/json")]
+
+@webApp.route('/tts', methods = ['POST'])
+def doTTS():
+    try:
+        input = json.loads(request.get_data(as_text=True))
+
+        text = input["text"]
+        speaker = input["speaker"]
+        print(f'\033[32mTTS: {speaker}: {text}\033[0m')
+
+        speaker = appSpeakers[speaker]
+
+        length_scale, text = get_label_value(text, 'LENGTH', 1, 'length scale')
+        noise_scale, text = get_label_value(text, 'NOISE', 0.667, 'noise scale')
+        noise_scale_w, text = get_label_value(text, 'NOISEW', 0.8, 'deviation of noise')
+        tip, text = get_label_text(text, '@', None)
+        cleaned, text = get_label(text, 'CLEANED')
+
+        stn_tst = get_text(text, speaker["hps_ms"], cleaned=cleaned)
+
+        with no_grad():
+            x_tst = stn_tst.unsqueeze(0)
+            x_tst_lengths = LongTensor([stn_tst.size(0)])
+            # print(x_tst, x_tst_lengths)
+            sid = LongTensor([speaker["id"]])
+            audio = speaker["net_g_ms"].infer(x_tst, x_tst_lengths, sid=sid, noise_scale=noise_scale,
+                                    noise_scale_w=noise_scale_w, length_scale=length_scale)[0][0, 0].data.cpu().float().numpy()
+
+        with io.BytesIO() as memFile:
+            write(memFile, speaker["hps_ms"].data.sampling_rate, audio)
+            memFile.seek(0)
+            wavBytes = memFile.read()
+            print(f'\033[33mGenerate wave {len(wavBytes)}B\033[0m')
+
+        return Response(wavBytes, mimetype="audio/wav")
+    
+    except Exception as e:
+        print(f'\033[31mERROR raised: {e}\033[0m')
+        traceback.print_exc()
+        return b'', 400, [("X-Exception-Text", str(e))]
+
+@webApp.route('/vc', methods = ['POST'])
+def doVC():
+    try:
+        fromSpeaker = request.args.get("from")
+        toSpeaker = request.args.get("to")
+        inputAudio = request.get_data(as_text=False)
+        print(f'\033[32mVoice convert from {fromSpeaker} to {toSpeaker}, size {len(inputAudio)}Bytes\033[0m')
+
+        fromSpeaker = appSpeakers[fromSpeaker]
+        toSpeaker = appSpeakers[toSpeaker]
+        if toSpeaker["model_index"] != fromSpeaker["model_index"]:
+            raise Exception("The two speakers must be in the same model")
+
+        with io.BytesIO(inputAudio) as memFile:
+            memFile.seek(0)
+            audio = utils.load_audio_to_torch(memFile, fromSpeaker["hps_ms"].data.sampling_rate)
+
+        y = audio.unsqueeze(0)
+
+        spec = spectrogram_torch(y, fromSpeaker["hps_ms"].data.filter_length,
+                                 fromSpeaker["hps_ms"].data.sampling_rate, fromSpeaker["hps_ms"].data.hop_length, fromSpeaker["hps_ms"].data.win_length,
+                                 center=False)
+        spec_lengths = LongTensor([spec.size(-1)])
+        sid_src = LongTensor([fromSpeaker["id"]])
+
+        with no_grad():
+            sid_tgt = LongTensor([toSpeaker["id"]])
+            audio = toSpeaker["net_g_ms"].voice_conversion(spec, spec_lengths, sid_src=sid_src, sid_tgt=sid_tgt)[0][0, 0].data.cpu().float().numpy()
+
+        with io.BytesIO() as memFile:
+            write(memFile, toSpeaker["hps_ms"].data.sampling_rate, audio)
+            memFile.seek(0)
+            wavBytes = memFile.read()
+            print(f'\033[33mGenerate wave {len(wavBytes)}B\033[0m')
+
+        return Response(wavBytes, mimetype="audio/wav")
+            
+    except Exception as e:
+        print(f'\033[31mERROR raised: {e}\033[0m')
+        traceback.print_exc()
+        return b'', 400, [("X-Exception-Text", str(e))]
+
+@webApp.route('/', methods = ['GET'])
+def showIndexHtml():
+    return send_file("./index.html")
+
+@webApp.route('/reboot', methods = ['GET'])
+def doReboot():
+    print('\033[33mRestart this program...\033[0m')
+    
+    delay = request.args.get("delay")
+    if delay != None:
+        os.startfile(sys.executable, 'open', ' '.join(sys.argv) + f' --delay={int(delay)}', os.getcwd())
+    else:
+        os.startfile(sys.executable, 'open', ' '.join(sys.argv), os.getcwd())
+    
+    import signal
+    os.kill(os.getpid(), signal.SIGINT)
+
+    return b''
+
+def WebMain():
+    global appSpeakers
+    global appConfig
+    global webApp
+
+    print("Loading web server configuration...")
+    with open(appArgs.web_config, 'r', encoding="utf-8") as f:
+        appConfig = json.load(f)
+
+    print("Loading models...")
+    modelIndex = 0
+    for modelItem in appConfig["models"]:
+        print(f'  + {modelIndex}. {modelItem["name"]}')
+        hps_ms = utils.get_hparams_from_file(modelItem["config"])
+        n_speakers = hps_ms.data.n_speakers if 'n_speakers' in hps_ms.data.keys() else 0
+        n_symbols = len(hps_ms.symbols) if 'symbols' in hps_ms.keys() else 0
+        speakers = hps_ms.speakers if 'speakers' in hps_ms.keys() else ['0']
+        use_f0 = hps_ms.data.use_f0 if 'use_f0' in hps_ms.data.keys() else False
+        emotion_embedding = hps_ms.data.emotion_embedding if 'emotion_embedding' in hps_ms.data.keys() else False
+
+        net_g_ms = SynthesizerTrn(
+            n_symbols,
+            hps_ms.data.filter_length // 2 + 1,
+            hps_ms.train.segment_size // hps_ms.data.hop_length,
+            n_speakers=n_speakers,
+            emotion_embedding=emotion_embedding,
+            **hps_ms.model)
+        _ = net_g_ms.eval()
+        utils.load_checkpoint(modelItem["model"], net_g_ms)
+
+        for id, name in enumerate(speakers):
+            speakerName = f'{modelItem["name"]}_{name}'
+            appSpeakers[speakerName] = {
+                "model_index": modelIndex,
+                "id": id,
+                "hps_ms": hps_ms,
+                "net_g_ms": net_g_ms,
+                "n_symbols": n_symbols,
+                "emotion_embedding": emotion_embedding,
+                "use_f0": use_f0
+            }
+        
+        modelIndex += 1
+    webApp.run(appConfig["server"]["host"], appConfig["server"]["port"])
+    pass
+
+def CLIMain():
+    global appArgs
+    if appArgs.escape:
         escape = True
     else:
         escape = False
@@ -151,6 +327,9 @@ if __name__ == '__main__':
 
                     stn_tst = get_text(text, hps_ms, cleaned=cleaned)
 
+                    # print(text)
+                    # print(stn_tst)
+
                     print_speakers(speakers, escape)
                     speaker_id = get_speaker_id('Speaker ID: ')
                     out_path = input('Path to save: ')
@@ -158,6 +337,7 @@ if __name__ == '__main__':
                     with no_grad():
                         x_tst = stn_tst.unsqueeze(0)
                         x_tst_lengths = LongTensor([stn_tst.size(0)])
+                        # print(x_tst, x_tst_lengths)
                         sid = LongTensor([speaker_id])
                         audio = net_g_ms.infer(x_tst, x_tst_lengths, sid=sid, noise_scale=noise_scale,
                                                noise_scale_w=noise_scale_w, length_scale=length_scale)[0][0, 0].data.cpu().float().numpy()
@@ -289,3 +469,36 @@ if __name__ == '__main__':
             write(out_path, hps_ms.data.sampling_rate, audio)
             print('Successfully saved!')
             ask_if_continue()
+    pass
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--escape",
+        action="store_true",
+        help="Let the application work as the background worker controlled by another application"
+    )
+    parser.add_argument(
+        "--delay",
+        type=int,
+        required=False,
+        help="Let the application delay 10sec when startup"
+    )
+    parser.add_argument(
+        "--web-config",
+        type=str,
+        required=False,
+        help="Path of the json file storing the web service's configurations",
+    )
+    appArgs = parser.parse_args()
+
+    if (appArgs.delay != None) and (appArgs.delay > 0):
+        import time
+        print(f'Startup delay for {appArgs.delay}sec...')
+        time.sleep(appArgs.delay)
+
+    if appArgs.web_config != None:
+        WebMain()
+    else:
+        CLIMain()
+    

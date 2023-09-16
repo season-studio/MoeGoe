@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="utf-8" />
+    <title>MoeGoe Web Frontend</title>
+    <script>
+/*!
+ * 
+ * js-audio-recorder - js audio recorder plugin
+ * 
+ * @version v0.2.3
+ * @homepage https://github.com/2fps/recorder
+ * @author 2fps <echoweb@126.com> (http://www.zhuyuntao.cn)
+ * @license MIT
+ *         
+ */
+ !function(t,e){"object"==typeof exports&&"object"==typeof module?module.exports=e():"function"==typeof define&&define.amd?define([],e):"object"==typeof exports?exports.Recorder=e():t.Recorder=e()}(window,function(){return function(t){var e={};function n(i){if(e[i])return e[i].exports;var o=e[i]={i:i,l:!1,exports:{}};return t[i].call(o.exports,o,o.exports,n),o.l=!0,o.exports}return n.m=t,n.c=e,n.d=function(t,e,i){n.o(t,e)||Object.defineProperty(t,e,{enumerable:!0,get:i})},n.r=function(t){"undefined"!=typeof Symbol&&Symbol.toStringTag&&Object.defineProperty(t,Symbol.toStringTag,{value:"Module"}),Object.defineProperty(t,"__esModule",{value:!0})},n.t=function(t,e){if(1&e&&(t=n(t)),8&e)return t;if(4&e&&"object"==typeof t&&t&&t.__esModule)return t;var i=Object.create(null);if(n.r(i),Object.defineProperty(i,"default",{enumerable:!0,value:t}),2&e&&"string"!=typeof t)for(var o in t)n.d(i,o,function(e){return t[e]}.bind(null,o));return i},n.n=function(t){var e=t&&t.__esModule?function(){return t.default}:function(){return t};return n.d(e,"a",e),e},n.o=function(t,e){return Object.prototype.hasOwnProperty.call(t,e)},n.p="",n(n.s=0)}([function(t,e,n){"use strict";Object.defineProperty(e,"__esModule",{value:!0});var i=function(){function t(t){void 0===t&&(t={}),this.buffer=[],this.inputSampleBits=16;var e,n=new(window.AudioContext||window.webkitAudioContext);this.inputSampleRate=n.sampleRate,this.config={sampleBits:~[8,16].indexOf(t.sampleBits)?t.sampleBits:16,sampleRate:~[11025,16e3,22050,24e3,44100,48e3].indexOf(t.sampleRate)?t.sampleRate:this.inputSampleRate,numChannels:~[1,2].indexOf(t.numChannels)?t.numChannels:1},this.outputSampleRate=this.config.sampleRate,this.oututSampleBits=this.config.sampleBits,this.littleEdian=(e=new ArrayBuffer(2),new DataView(e).setInt16(0,256,!0),256===new Int16Array(e)[0])}return t.prototype.initRecorder=function(){var t=this;this.context&&this.destroy(),this.context=new(window.AudioContext||window.webkitAudioContext),this.analyser=this.context.createAnalyser(),this.analyser.fftSize=2048;var e=this.context.createScriptProcessor||this.context.createJavaScriptNode;this.recorder=e.apply(this.context,[4096,this.config.numChannels,this.config.numChannels]),this.initUserMedia(),this.recorder.onaudioprocess=function(e){if(t.isrecording&&!t.ispause){if(1===t.config.numChannels){var n=e.inputBuffer.getChannelData(0);t.buffer.push(new Float32Array(n)),t.size+=n.length}else{for(var i=new Float32Array(e.inputBuffer.getChannelData(0)),o=new Float32Array(e.inputBuffer.getChannelData(1)),r=new ArrayBuffer(i.byteLength+o.byteLength),a=new Float32Array(r),s=0,u=0;u<i.byteLength;++u)a[s]=i[u],a[++s]=o[u],s++;t.buffer.push(a),t.size+=s}t.duration+=4096/t.inputSampleRate,t.onprocess&&t.onprocess(t.duration)}}},t.prototype.start=function(){var e=this;this.isrecording||(this.clear(),this.initRecorder(),this.isrecording=!0,navigator.mediaDevices.getUserMedia({audio:!0}).then(function(t){e.audioInput=e.context.createMediaStreamSource(t)},function(e){t.throwError(e.name+" : "+e.message)}).then(function(){e.audioInput.connect(e.analyser),e.analyser.connect(e.recorder),e.recorder.connect(e.context.destination)}))},t.prototype.pause=function(){this.isrecording&&!this.ispause&&(this.ispause=!0,this.recorder.disconnect())},t.prototype.resume=function(){this.isrecording&&this.ispause&&(this.ispause=!1,this.audioInput&&this.audioInput.connect(this.analyser),this.analyser.connect(this.recorder),this.recorder.connect(this.context.destination))},t.prototype.stop=function(){this.isrecording=!1,this.audioInput&&this.audioInput.disconnect(),this.recorder.disconnect()},t.prototype.play=function(){var e=this;this.stop(),this.source&&this.source.stop(),this.context.decodeAudioData(this.getWAV().buffer,function(t){e.source=e.context.createBufferSource(),e.source.buffer=t,e.source.connect(e.analyser),e.analyser.connect(e.context.destination),e.source.start()},function(e){t.throwError(e)})},t.prototype.getRecordAnalyseData=function(){if(this.ispause)return this.prevDomainData;var t=new Uint8Array(this.analyser.frequencyBinCount);return this.analyser.getByteTimeDomainData(t),this.prevDomainData=t},t.prototype.getPlayAnalyseData=function(){return this.getRecordAnalyseData()},t.prototype.initUserMedia=function(){void 0===navigator.mediaDevices&&(navigator.mediaDevices={}),void 0===navigator.mediaDevices.getUserMedia&&(navigator.mediaDevices.getUserMedia=function(t){var e=navigator.getUserMedia||navigator.webkitGetUserMedia||navigator.mozGetUserMedia;return e?new Promise(function(n,i){e.call(navigator,t,n,i)}):Promise.reject(new Error("浏览器不支持 getUserMedia !"))})},t.prototype.getPCM=function(){var e=this.flat();return e=t.compress(e,this.inputSampleRate,this.outputSampleRate),t.encodePCM(e,this.oututSampleBits,this.littleEdian)},t.prototype.getPCMBlob=function(){return new Blob([this.getPCM()])},t.prototype.downloadPCM=function(t){void 0===t&&(t="recorder"),this.stop();var e=this.getPCMBlob();this.download(e,t,"pcm")},t.prototype.getWAV=function(){var e=this.getPCM();return t.encodeWAV(e,this.inputSampleRate,this.outputSampleRate,this.config.numChannels,this.oututSampleBits,this.littleEdian)},t.prototype.getWAVBlob=function(){return new Blob([this.getWAV()],{type:"audio/wav"})},t.prototype.downloadWAV=function(t){void 0===t&&(t="recorder"),this.stop();var e=this.getWAVBlob();this.download(e,t,"wav")},t.prototype.destroy=function(t){var e=this;this.closeAudioContext().then(function(){t&&t.call(e)})},t.prototype.closeAudioContext=function(){return this.context.close?this.context.close():new Promise(function(t){t()})},t.prototype.download=function(e,n,i){try{var o=document.createElement("a");o.href=window.URL.createObjectURL(e),o.download=n+"."+i,o.click()}catch(e){t.throwError(e)}},t.prototype.clear=function(){this.buffer.length=0,this.size=0,this.PCMData=null,this.audioInput=null,this.duration=0,this.ispause=!1,this.source&&(this.source.stop(),this.source=null)},t.prototype.flat=function(){if(this.PCMData)return this.PCMData;for(var t=new Float32Array(this.size),e=0,n=0;n<this.buffer.length;n++)t.set(this.buffer[n],e),e+=this.buffer[n].length;return this.PCMData=t},t.playAudio=function(t){var e=document.createElement("audio");e.src=window.URL.createObjectURL(t),e.play()},t.compress=function(t,e,n){for(var i=Math.max(Math.floor(e/n),1),o=t.length/i,r=new Float32Array(o),a=0,s=0;a<o;)r[a]=t[s],s+=i,a++;return r},t.encodePCM=function(t,e,n){void 0===n&&(n=!0);var i=0,o=t.length*(e/8),r=new ArrayBuffer(o),a=new DataView(r);if(8===e)for(var s=0;s<t.length;s++,i++){var u=(c=Math.max(-1,Math.min(1,t[s])))<0?128*c:127*c;u=+u+128,a.setInt8(i,u)}else for(s=0;s<t.length;s++,i+=2){var c=Math.max(-1,Math.min(1,t[s]));a.setInt16(i,c<0?32768*c:32767*c,n)}return a},t.encodeWAV=function(t,e,n,i,r,a){void 0===a&&(a=!0);var s=Math.min(e,n),u=r,c=new ArrayBuffer(44+t.byteLength),h=new DataView(c),f=i,l=0;o(h,l,"RIFF"),l+=4,h.setUint32(l,36+t.byteLength,a),o(h,l+=4,"WAVE"),o(h,l+=4,"fmt "),l+=4,h.setUint32(l,16,a),l+=4,h.setUint16(l,1,a),l+=2,h.setUint16(l,f,a),l+=2,h.setUint32(l,s,a),l+=4,h.setUint32(l,f*s*(u/8),a),l+=4,h.setUint16(l,f*(u/8),a),l+=2,h.setUint16(l,u,a),o(h,l+=2,"data"),l+=4,h.setUint32(l,t.byteLength,a),l+=4;for(var p=0;p<t.byteLength;)h.setUint8(l,t.getUint8(p)),l++,p++;return h},t.throwError=function(t){throw new Error(t)},t}();function o(t,e,n){for(var i=0;i<n.length;i++)t.setUint8(e+i,n.charCodeAt(i))}e.default=i}]).default});
+//# sourceMappingURL=Recorder.js.map
+    </script>
+    <style>
+        * {
+            outline: none;
+        }
+        textarea {
+            resize: none;
+        }
+        p {
+            margin: 0.25em 0.5em;
+        }
+        #TTSContent {
+            width: 100%;
+            height: 10em;
+        }
+        .header {
+            background-color: aliceblue;
+            padding: 0.5em;
+            margin: 0;
+        }
+        #ResultAudio {
+            width: 100%;
+        }
+        #FileGetter {
+            height: 10em;
+            background-color: whitesmoke;
+            border: dashed 1px lightblue;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-radius: 0.5em;
+            -ms-user-select: none;
+            user-select: none;
+            padding: 1em;
+        }
+        #RecorderTrigger {
+            padding: 0.25em 0.5em;
+            border: dashed 1px lightblue;
+            margin: 0.25em;
+            border-radius: 0.5em;
+            background-color: white;
+            cursor: pointer;
+        }
+        #FileGetted {
+            font-size: 0.7em;
+        }
+        #DoReboot {
+            float: right;
+        }
+    </style>
+</head>
+<body>
+    <p class="header">
+        <label for="OpType">操作类型：</label>
+        <select id="OpType">
+            <option value="tts">语音合成</option>
+            <option value="vc">音色转换</option>
+        </select>
+        <button id="DoReboot">重启</button>
+    </p>
+    <div id="PanelTTS">
+        <p>
+            <label for="TTSSpeaker">角色名：</label>
+            <select id="TTSSpeaker"></select>
+        </p>
+        <p>
+            <label for="TTSContent">合成的文本</label><br />
+            <textarea id="TTSContent"></textarea>
+        </p>
+        <p>
+            <button id="DoTTS">合成</button>
+        </p>
+    </div>
+    <div id="PanelVC" style="display: none;">
+        <p>
+            <label for="FromSpeaker">源音色：</label>
+            <select id="FromSpeaker"></select>
+        </p>
+        <p>
+            <label for="ToSpeaker">目标音色：</label>
+            <select id="ToSpeaker"></select>
+        </p>
+        <p id="FileGetter">
+            <span>将源音频文件拖拽到此处，或点击打开文件</span>
+            <span id="RecorderTrigger">或点击录音</span>
+            <audio id="GetAudio" controls></audio>
+            <span id="FileGetted"></span>
+        </p>
+        <p>
+            <button id="DoVC">转换</button>
+        </p>
+    </div>
+    <p>
+        <audio id="ResultAudio" controls></audio>
+    </p>
+    <p id="PanelTip"></p>
+    <script>
+        window.addEventListener("load", async () => {
+            let resp = await fetch(`${location.origin}/speakers`);
+            resp = await resp.json();
+            let speakersHTML = resp.map(e => `<option value="${e}">${e.replaceAll(" ", "&nbsp;")}</option>`).join("\r\n");
+            let TTSSpeaker = document.getElementById("TTSSpeaker");
+            let FromSpeaker = document.getElementById("FromSpeaker");
+            let ToSpeaker = document.getElementById("ToSpeaker");
+            TTSSpeaker.innerHTML = speakersHTML;
+            FromSpeaker.innerHTML = speakersHTML;
+            ToSpeaker.innerHTML = speakersHTML;
+
+            let panelTip = document.getElementById("PanelTip");
+
+            document.getElementById("OpType")?.addEventListener("change", (e) => {
+                if (e.target.value === "tts") {
+                    document.getElementById("PanelTTS").style.display = "";
+                    document.getElementById("PanelVC").style.display = "none";
+                } else {
+                    document.getElementById("PanelTTS").style.display = "none";
+                    document.getElementById("PanelVC").style.display = "";
+                }
+            });
+
+            function setAudioPlayer(_id, _blob) {
+                let audio = document.getElementById(_id);
+                audio.src && (URL.revokeObjectURL(audio.src));
+                audio.src = URL.createObjectURL(_blob);
+                console.log(audio.src);
+            }
+
+            document.getElementById("DoTTS")?.addEventListener("click", async () => {
+                panelTip.textContent = "开始合成……";
+                try {
+                    let data = {
+                        speaker: document.getElementById("TTSSpeaker")?.value,
+                        text: document.getElementById("TTSContent")?.value
+                    };
+                    let resp = await fetch(`${location.origin}/tts`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(data)
+                    });
+                    if (resp.ok) {
+                        resp = await resp.blob();
+                        setAudioPlayer("ResultAudio", resp);
+                        panelTip.textContent = `合成完成（${new Date().toLocaleString()}）`;
+                    } else {
+                        alert(`合成失败 ${resp.status} ${resp.headers["X-Exception-Text"]}`);
+                        panelTip.textContent = "合成失败";
+                    }
+                } catch(err) {
+                    console.error(err);
+                    panelTip.textContent = "合成失败";
+                }
+            });
+
+            let fileGetter = document.getElementById("FileGetter");
+            function setFileGetted(_blob, _tip) {
+                fileGetter.$file = _blob;
+                let fileGetted = document.getElementById("FileGetted");
+                fileGetted.textContent = "使用" + (_tip||"") + (_blob.name ? `(${_blob.name})` : "");
+                setAudioPlayer("GetAudio", _blob);
+            }
+            let fileGetterDropHandler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.type === "drop") {
+                    setFileGetted(e.dataTransfer?.files[0], "文件");
+                }
+            };
+            fileGetter.addEventListener("drop", fileGetterDropHandler);
+            fileGetter.addEventListener("dragenter", fileGetterDropHandler);
+            fileGetter.addEventListener("dragover", fileGetterDropHandler);
+            fileGetter.addEventListener("dragleave", fileGetterDropHandler);
+            fileGetter.addEventListener("click", (e) => {
+                if (e.target === fileGetter) {
+                    let fileInput = document.createElement('input');
+                    fileInput.type = "file";
+                    fileInput.accept="audio/wav";
+                    fileInput.addEventListener("change", (event) => {
+                        setFileGetted(event.target?.files[0], "文件");
+                    });
+                    fileInput.click();
+                }
+            });
+
+            document.getElementById("RecorderTrigger").addEventListener("click", async (e) => {
+                let el = e.target;
+                if (el.getAttribute("id") === "RecorderTrigger");
+                if (el.$recorder) {
+                    el.$recorder.stop();
+                    let blob = el.$recorder.getWAVBlob();
+                    blob.name = new Date().toLocaleString();
+                    setFileGetted(blob, "录音");
+                    let rec = el.$recorder;
+                    el.$recorder = null;
+                    el.textContent = "或点击录音";
+                    el.setAttribute("style", "");
+                    await rec.destroy();
+                    rec = null;
+                } else {
+                    let rec = (el.$recorder = new Recorder({
+                        sampleBits: 16,
+                        sampleRate: 16000,
+                        numChannels: 1
+                    }));
+                    el.textContent = "停止录音";
+                    el.setAttribute("style", "background: red; color: #fff;");
+                    rec.start();
+                }
+            });
+
+            document.getElementById("DoVC")?.addEventListener("click", async () => {
+                if (!fileGetter.$file instanceof Blob) {
+                    return;
+                }
+                panelTip.textContent = "开始转换……";
+                try {
+                    let resp = await fetch(`${location.origin}/vc?from=${encodeURIComponent(document.getElementById("FromSpeaker")?.value)}&to=${encodeURIComponent(document.getElementById("ToSpeaker")?.value)}`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "audio/wav"
+                        },
+                        body: fileGetter.$file
+                    });
+                    if (resp.ok) {
+                        resp = await resp.blob();
+                        setAudioPlayer("ResultAudio", resp);
+                        panelTip.textContent = `转换完成（${new Date().toLocaleString()}）`;
+                    } else {
+                        alert(`转换失败 ${resp.status} ${resp.headers["X-Exception-Text"]}`);
+                        panelTip.textContent = "转换失败";
+                    }
+                } catch(err) {
+                    console.error(err);
+                    panelTip.textContent = "转换失败";
+                }
+            });
+
+            document.getElementById("DoReboot").addEventListener("click", async () => {
+                try {
+                    panelTip.textContent = "发送重启指令……";
+                    await fetch(`${location.origin}/reboot?delay=3`);
+                } catch {
+                    // None for exception
+                } finally {
+                    panelTip.textContent = "等待重启……";
+                    let timeLog = Date.now();
+                    do {
+                        try {
+                            let resp = await fetch(location.origin);
+                            if (resp.ok) {
+                                break;
+                            } else {
+                                if ((Date.now() - timeLog) > 10000) {
+                                    break;
+                                }
+                            }
+                        } catch {
+                            // None for exception
+                        }
+                    } while(true);
+                    setTimeout(() => location.reload(), 5000);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

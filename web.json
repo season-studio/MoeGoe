@@ -1,0 +1,38 @@
+{
+    "server": {
+        "host": "127.0.0.1",
+        "port": 4060
+    },
+    "models": [
+        {
+            "name": "200nv1",
+            "model": "C:\\Users\\Season\\Desktop\\mysound\\local-app\\target-model\\20230905-shenmiao-2\\G_latest.pth",
+            "config": "C:\\Users\\Season\\Desktop\\mysound\\local-app\\target-model\\20230905-shenmiao-2\\moegoe_config.json"
+        },
+        {
+            "name": "200nv2",
+            "model": "C:\\Users\\Season\\Desktop\\mysound\\local-app\\target-model\\20230905-xiaxiaolan-3\\G_latest.pth",
+            "config": "C:\\Users\\Season\\Desktop\\mysound\\local-app\\target-model\\20230905-xiaxiaolan-3\\moegoe_config.json"
+        },
+        {
+            "name": "500nvall",
+            "model": "C:\\Users\\Season\\Desktop\\mysound\\local-app\\target-model\\20230916-me-mec-sm-xxl-yx\\G_latest.pth",
+            "config": "C:\\Users\\Season\\Desktop\\mysound\\local-app\\target-model\\20230916-me-mec-sm-xxl-yx\\moegoe_config.json"
+        },
+        {
+            "name": "200mg",
+            "model": "C:\\Users\\Season\\Desktop\\mysound\\local-app\\target-model\\20230912-me-mec-yuankuochengO\\G_latest.pth",
+            "config": "C:\\Users\\Season\\Desktop\\mysound\\local-app\\target-model\\20230912-me-mec-yuankuochengO\\moegoe_config.json"
+        },
+        {
+            "name": "200ms",
+            "model": "C:\\Users\\Season\\Desktop\\mysound\\local-app\\target-model\\20230906-me-mec-lqf-zrd\\G_latest.pth",
+            "config": "C:\\Users\\Season\\Desktop\\mysound\\local-app\\target-model\\20230906-me-mec-lqf-zrd\\moegoe_config.json"
+        },
+        {
+            "name": "200man",
+            "model": "C:\\Users\\Season\\Desktop\\mysound\\local-app\\target-model\\20230831-me-zz-tty-qhms\\G_latest.pth",
+            "config": "C:\\Users\\Season\\Desktop\\mysound\\local-app\\target-model\\20230831-me-zz-tty-qhms\\moegoe_config.json"
+        }
+    ]
+}
